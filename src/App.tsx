@@ -1,10 +1,10 @@
 import * as React from 'react';
 
-import { AppBody } from './AppBody';
+import { AppBody } from './Components/Body/AppBody';
 
-import { CommentCard } from './CommentCard';
+import { CommentCard } from './Components/Comments/CommentCard';
 
-import { AppHeader } from './AppHeader';
+import { AppHeader } from './Components/Header/AppHeader';
 
 export default class App extends React.Component {
   constructor(props: any) {
@@ -16,7 +16,6 @@ export default class App extends React.Component {
     let cards: React.ReactNode[] = [];
 
     for (let key in allData) {
-      console.log(key);
       cards.push(<CommentCard data={allData[key]} />);
     }
     return cards;
@@ -25,9 +24,7 @@ export default class App extends React.Component {
   render() {
     return (
       <div>
-        <div>
-          <AppHeader />
-        </div>
+        <AppHeader />
         <AppBody cards={this.getCommentCards(testData)} />
       </div>
     );

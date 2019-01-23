@@ -1,10 +1,7 @@
 {
   "compilerOptions": {
     "declaration": true,
-    "lib": [
-      "es2015",
-      "dom"
-    ],
+    "lib": ["es2015", "dom"],
     "module": "commonjs",
     "moduleResolution": "node",
     "noEmitOnError": true,
@@ -19,7 +16,15 @@
     "composite": true
   },
   "include": [
-    "src/*"
+    "src/*",
+    "src/Components/Body/AppBody.tsx",
+    "src/Components/Header/AppHeader.tsx",
+    "src/Components/Header/AppHeaderOptions.tsx",
+    "src/Components/Comments/CommentBody.tsx",
+    "src/Components/Comments/CommentCard.tsx",
+    "src/Components/Comments/CommentFooter.tsx",
+    "src/Components/Comments/CommentHeader.tsx",
+    "src/Components/Comments/Comment.tsx"
   ],
   "references": [
     {
