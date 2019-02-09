@@ -1,13 +1,5 @@
 import * as React from 'react';
 
-import { ISignal } from '@phosphor/signaling';
-
-import { UseSignal } from '@jupyterlab/apputils';
-
-import { ILabShell } from '@jupyterlab/application';
-
-import { FocusTracker, Widget } from '@phosphor/widgets';
-
 import { IMetadataCommentsService } from 'jupyterlab-metadata-service';
 
 // Components
@@ -58,9 +50,9 @@ interface IAppStates {
    * @type string
    */
   newThreadFile: string;
-  gitName: string;
-  gitPhoto: string;
   userSet: boolean;
+  creator: object;
+  myCards: React.ReactNode[];
 }
 
 /**
@@ -68,17 +60,13 @@ interface IAppStates {
  */
 interface IAppProps {
   /**
-   * Signal that updates when file events happen
-   *
-   * @type ISignal
-   */
-  signal?: ISignal<ILabShell, FocusTracker.IChangedArgs<Widget>>;
-  /**
    * Comments Service that communicates with graphql server
    *
    * @type IMetadataCommentsService
    */
   commentsService?: IMetadataCommentsService;
+  target: string;
+  targetName: string;
 }
 
 /**
@@ -99,9 +87,9 @@ export default class App extends React.Component<IAppProps, IAppStates> {
       showResolved: false,
       newThreadActive: false,
       newThreadFile: '',
-      gitName: '',
-      gitPhoto: '',
-      userSet: false
+      userSet: false,
+      creator: {},
+      myCards: []
     };
 
     this.getAllCommentCards = this.getAllCommentCards.bind(this);
@@ -117,33 +105,60 @@ export default class App extends React.Component<IAppProps, IAppStates> {
     this.setUserInfo = this.setUserInfo.bind(this);
   }
 
+  componentDidUpdate(): void {
+    console.log('Component did update');
+
+    if (this.props.target !== undefined) {
+      this.props.commentsService
+        .queryAllByTarget(this.props.target)
+        .then((response: any) => {
+          console.log('In did mount ', response);
+
+          let threads = this.getAllCommentCards(
+            response.data.annotationsByTarget
+          );
+          if (
+            this.state.myCards
+              .sort()
+              .every(function(value: React.ReactNode, index: number) {
+                return value === threads.sort()[index];
+              }) &&
+            response.loading
+          ) {
+            this.setState({
+              myCards: threads
+            });
+          }
+        });
+    } else {
+      if (this.state.myCards.length !== 0) {
+        this.setState({ myCards: [] });
+      }
+    }
+  }
+
   /**
    * React render function
    */
   render() {
     return this.state.userSet ? (
-      <UseSignal signal={this.props.signal}>
-        {(sender: ILabShell, args: FocusTracker.IChangedArgs<Widget>) => {
-          return <div>{this.checkAppHeader(args)}</div>;
-        }}
-      </UseSignal>
+      <div>{this.checkAppHeader()}</div>
     ) : (
       <UserSet setUserInfo={this.setUserInfo} />
     );
   }
-
   /**
    * Checks the the prop returned by the signal and returns App header with correct data
    *
    * @param args Type: any - FocusTracker.IChangedArgs<Widget> Argument returned by the signal listener
    * @return Type: React.ReactNode[] - App Header with correct header string
    */
-  checkAppHeader(args: any): React.ReactNode {
+  checkAppHeader(): React.ReactNode {
     try {
       return (
         <div>
           <AppHeader
-            header={args.newValue.context.session._name}
+            header={this.props.targetName}
             cardExpanded={this.state.expandedCard !== ' '}
             threadOpen={this.state.newThreadActive}
             setExpandedCard={this.setExpandedCard}
@@ -156,12 +171,7 @@ export default class App extends React.Component<IAppProps, IAppStates> {
               />
             }
           />
-          <AppBody
-            cards={this.getAllCommentCards(
-              this.getComments(args.newValue.context.session._path),
-              args.newValue.context.session._path
-            )}
-          />
+          <AppBody cards={this.state.myCards} />
         </div>
       );
     } catch {
@@ -190,13 +200,16 @@ export default class App extends React.Component<IAppProps, IAppStates> {
    * @param allData Type: any - Comment data from this.props.data
    * @return Type: React.ReactNode[] - List of CommentCard Components / ReactNodes
    */
-  getAllCommentCards(allData: any, itemId: string): React.ReactNode[] {
+  getAllCommentCards(allData: any): React.ReactNode[] {
     let cards: React.ReactNode[] = [];
+
+    console.log('Getting all comments');
+
     if (!this.state.newThreadActive) {
       for (let key in allData) {
         if (
           this.shouldRenderCard(
-            allData[key].startComment.resolved,
+            false, // TODO: Add resolved to thread value
             this.state.expandedCard !== ' ',
             this.state.expandedCard === key
           )
@@ -204,15 +217,15 @@ export default class App extends React.Component<IAppProps, IAppStates> {
           cards.push(
             <CommentCard
               data={allData[key]}
-              cardId={key}
+              threadId={allData[key].id}
               setExpandedCard={this.setExpandedCard}
               checkExpandedCard={this.checkExpandedCard}
               setReplyActiveCard={this.setReplyActiveCard}
               checkReplyActiveCard={this.checkReplyActiveCard}
-              resolved={allData[key].startComment.resolved}
+              resolved={false}
               putComment={this.putComment}
               setCardValue={this.setCardValue}
-              itemId={itemId}
+              target={this.props.target}
             />
           );
         }
@@ -258,35 +271,33 @@ export default class App extends React.Component<IAppProps, IAppStates> {
       return true;
     }
   }
+
   /**
    * Query the comments from MetadataCommentsService based on itemId
    *
-   * @param itemId Type: String - Path of file to get comments for
+   * @param target Type: String - Path of file to get comments for
    * @return Type: any - Stream of comments
    */
-  getComments(itemId: string): any {
-    return this.props.commentsService.queryComments(itemId);
+  getComments(target: string): Promise<any> {
+    let allComments = this.props.commentsService.queryAllByTarget(target);
+
+    console.log('In async ', allComments);
+
+    return allComments;
   }
 
   /**
    * Pushed comment back to MetadataCommentsService
    *
-   * @param comment Type: string - comment message
-   * @param cardId Type: String - commend card / thread the comment applies to
+   * @param value Type: string - comment message
+   * @param threadId Type: String - commend card / thread the comment applies to
    */
-  async putComment(
-    itemId: string,
-    cardId: string,
-    comment?: string,
-    tag?: string
-  ): Promise<void> {
+  async putComment(threadId: string, value: string): Promise<void> {
     await this.props.commentsService.createComment(
-      itemId,
-      cardId,
-      this.state.gitName,
-      this.state.gitPhoto,
-      comment,
-      tag
+      threadId,
+      value,
+      this.state.creator,
+      false
     );
   }
 
@@ -344,11 +355,11 @@ export default class App extends React.Component<IAppProps, IAppStates> {
    * Sets this.state fields for active new thread card
    *
    * @param state Type: boolean - State to set if new thread card is active
-   * @param itemId Type: string - itemId of the file to add new thread to
+   * @param target Type: string - target of the file to add new thread to
    */
-  setNewThreadActive(state: boolean, itemId?: string) {
+  setNewThreadActive(state: boolean, target?: string) {
     this.setState({ newThreadActive: state });
-    this.setState({ newThreadFile: itemId });
+    this.setState({ newThreadFile: target });
   }
 
   /**
@@ -379,11 +390,14 @@ export default class App extends React.Component<IAppProps, IAppStates> {
 
     // If users does not have a name set, use username
     const name = myJSON.name === null ? myJSON.login : myJSON.name;
-
+    console.log(myJSON.name);
     if (myJSON.message !== 'Not Found') {
       this.setState({
-        gitName: name,
-        gitPhoto: myJSON.avatar_url,
+        creator: {
+          id: 'person/1',
+          name: name,
+          image: myJSON.avatar_url
+        },
         userSet: true
       });
     } else {
